@@ -1,25 +1,25 @@
-name: CI - macOS (Lib 1.2 Target)
+name: Build and Release qBittorrent (M2)
 
 on:
-  workflow_dispatch: # This adds the "Run" button you need
+  workflow_dispatch: # Allows you to trigger this manually
   push:
-    branches: [ master, main ]
+    tags:
+      - 'v*' # Triggers a release when you push a tag like v5.1.4
 
 permissions:
-  contents: read
+  contents: write
   actions: write
 
 jobs:
-  ci:
+  build:
     name: Build
     runs-on: macos-latest
     strategy:
       fail-fast: false
       matrix:
-        # Narrowed down to exactly what you requested
         libt_version: ["1.2.20"]
         qbt_gui: ["GUI=ON", "GUI=OFF"]
-        qt_version: ["6.10.1"]
+        qt_version: ["6.8.1"]
 
     env:
       boost_path: "${{ github.workspace }}/../boost"
@@ -30,22 +30,10 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: qbittorrent/qBittorrent
-          ref: 'release-5.1.4' # Pinning to the stable 5.1.4 version
-          persist-credentials: false
+          ref: 'release-5.1.4'
 
       - name: Install dependencies
-        run: |
-          brew update > /dev/null
-          brew install openssl@3 zlib cmake ninja
-
-      - name: Install boost
-        run: |
-          curl -L -o "${{ runner.temp }}/boost.tar.gz" https://archives.boost.io/release/1.86.0/source/boost_1_86_0.tar.gz
-          tar -xf "${{ runner.temp }}/boost.tar.gz" -C "${{ github.workspace }}/.."
-          mv "${{ github.workspace }}/.."/boost_* "${{ env.boost_path }}"
-          cd "${{ env.boost_path }}"
-          ./bootstrap.sh
-          ./b2 stage --stagedir=./ --with-headers
+        run: brew install openssl@3 zlib cmake ninja boost
 
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
@@ -59,33 +47,38 @@ jobs:
         run: |
           git clone --branch v${{ matrix.libt_version }} --depth 1 --recurse-submodules https://github.com/arvidn/libtorrent.git ${{ env.libtorrent_path }}
           cd ${{ env.libtorrent_path }}
-          cmake -B build -G "Ninja" -DBUILD_SHARED_LIBS=OFF -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=20 -DBOOST_ROOT="${{ env.boost_path }}/lib/cmake"
+          cmake -B build -G "Ninja" -DCMAKE_BUILD_TYPE=Release -Dboost-python=OFF -Dencryption=ON -Dpython-bindings=OFF
           cmake --build build
           sudo cmake --install build
 
       - name: Build qBittorrent
         run: |
-          cmake -B build -G "Ninja" -DCMAKE_BUILD_TYPE=Release -DBOOST_ROOT="${{ env.boost_path }}/lib/cmake" -D${{ matrix.qbt_gui }}
+          cmake -B build -G "Ninja" -DCMAKE_BUILD_TYPE=Release -D${{ matrix.qbt_gui }}
           cmake --build build
 
-      - name: Prepare build artifacts
+      - name: Prepare Artifacts
         run: |
-          appName="qbittorrent"
-          if [ "${{ matrix.qbt_gui }}" = "GUI=OFF" ]; then appName="qbittorrent-nox"; fi
-          pushd build
+          mkdir -p upload
           if [ "${{ matrix.qbt_gui }}" = "GUI=ON" ]; then
-            macdeployqt "$appName.app" -no-strip
-            codesign --force --sign - "$appName.app" # Required for M2
-            hdiutil create -fs HFS+ -srcfolder "$appName.app" -volname "$appName" "$appName.dmg"
+            appName="qbittorrent"
+            macdeployqt "build/${appName}.app" -no-strip
+            codesign --force --sign - "build/${appName}.app"
+            hdiutil create -fs HFS+ -srcfolder "build/${appName}.app" -volname "${appName}" "upload/qBittorrent-5.1.4-LibT1.2.dmg"
           else
-            chmod +x "$appName"
+            appName="qbittorrent-nox"
+            binaryPath="build/${appName}.app/Contents/MacOS/${appName}"
+            cp "$binaryPath" "upload/qbittorrent-nox"
+            chmod +x "upload/qbittorrent-nox"
           fi
-          popd
 
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
+      - name: Create Release and Upload
+        uses: softprops/action-gh-release@v2
         with:
-          name: qBittorrent_macOS_Lib1.2_${{ matrix.qbt_gui }}
-          path: |
-            build/*.dmg
-            build/qbittorrent-nox
+          tag_name: "v5.1.4-custom"
+          name: "qBittorrent 5.1.4 (Libtorrent 1.2.20)"
+          body: "Custom build for macOS M2 (ARM64). Includes GUI (.dmg) and NOX (binary)."
+          files: |
+            upload/qBittorrent-5.1.4-LibT1.2.dmg
+            upload/qbittorrent-nox
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
