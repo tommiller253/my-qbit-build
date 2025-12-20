@@ -1,14 +1,13 @@
 name: Build and Release qBittorrent (M2)
 
 on:
-  workflow_dispatch: # Allows you to trigger this manually
+  workflow_dispatch:
   push:
     tags:
-      - 'v*' # Triggers a release when you push a tag like v5.1.4
+      - 'v*'
 
 permissions:
   contents: write
-  actions: write
 
 jobs:
   build:
@@ -19,11 +18,7 @@ jobs:
       matrix:
         libt_version: ["1.2.20"]
         qbt_gui: ["GUI=ON", "GUI=OFF"]
-        qt_version: ["6.8.1"]
-
-    env:
-      boost_path: "${{ github.workspace }}/../boost"
-      libtorrent_path: "${{ github.workspace }}/../libtorrent"
+        qt_version: ["6.8.1"] # Switched to 6.8.1 LTS for stability
 
     steps:
       - name: Checkout qBittorrent
@@ -39,17 +34,14 @@ jobs:
         uses: jurplel/install-qt-action@v4
         with:
           version: ${{ matrix.qt_version }}
-          archives: qtbase qtdeclarative qtsvg qttools
-          modules: qtimageformats
           cache: true
 
-      - name: Install libtorrent (1.2.20)
+      - name: Build libtorrent
         run: |
-          git clone --branch v${{ matrix.libt_version }} --depth 1 --recurse-submodules https://github.com/arvidn/libtorrent.git ${{ env.libtorrent_path }}
-          cd ${{ env.libtorrent_path }}
-          cmake -B build -G "Ninja" -DCMAKE_BUILD_TYPE=Release -Dboost-python=OFF -Dencryption=ON -Dpython-bindings=OFF
-          cmake --build build
-          sudo cmake --install build
+          git clone --branch v${{ matrix.libt_version }} --depth 1 --recurse-submodules https://github.com/arvidn/libtorrent.git ../libtorrent
+          cmake -B ../libtorrent/build -S ../libtorrent -G "Ninja" -DCMAKE_BUILD_TYPE=Release -Dboost-python=OFF -Dencryption=ON -Dpython-bindings=OFF
+          cmake --build ../libtorrent/build
+          sudo cmake --install ../libtorrent/build
 
       - name: Build qBittorrent
         run: |
@@ -60,25 +52,28 @@ jobs:
         run: |
           mkdir -p upload
           if [ "${{ matrix.qbt_gui }}" = "GUI=ON" ]; then
-            appName="qbittorrent"
-            macdeployqt "build/${appName}.app" -no-strip
-            codesign --force --sign - "build/${appName}.app"
-            hdiutil create -fs HFS+ -srcfolder "build/${appName}.app" -volname "${appName}" "upload/qBittorrent-5.1.4-LibT1.2.dmg"
+            # Handle GUI Bundle
+            macdeployqt "build/qbittorrent.app" -no-strip
+            codesign --force --sign - "build/qbittorrent.app"
+            hdiutil create -fs HFS+ -srcfolder "build/qbittorrent.app" -volname "qBittorrent" "upload/qBittorrent-GUI.dmg"
           else
-            appName="qbittorrent-nox"
-            binaryPath="build/${appName}.app/Contents/MacOS/${appName}"
-            cp "$binaryPath" "upload/qbittorrent-nox"
+            # Handle NOX (The "Search and Rescue" Fix)
+            # Find the binary even if it's hidden inside a .app folder
+            BIN_PATH=$(find build -name "qbittorrent-nox" -type f | grep "MacOS" || find build -name "qbittorrent-nox" -type f)
+            echo "Found binary at: $BIN_PATH"
+            cp "$BIN_PATH" "upload/qbittorrent-nox"
             chmod +x "upload/qbittorrent-nox"
+            codesign --force --sign - "upload/qbittorrent-nox"
           fi
 
-      - name: Create Release and Upload
+      - name: Create Release
         uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
         with:
-          tag_name: "v5.1.4-custom"
-          name: "qBittorrent 5.1.4 (Libtorrent 1.2.20)"
-          body: "Custom build for macOS M2 (ARM64). Includes GUI (.dmg) and NOX (binary)."
+          tag_name: "v5.1.4-L1.2"
+          name: "qBittorrent 5.1.4 (LibT 1.2.20)"
           files: |
-            upload/qBittorrent-5.1.4-LibT1.2.dmg
+            upload/qBittorrent-GUI.dmg
             upload/qbittorrent-nox
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
