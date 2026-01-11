@@ -102,7 +102,7 @@ jobs:
       - name: Build qBittorrent 5.1.2
         run: |
           git clone \
-            --branch v5.1.2 \
+            --branch release-5.1.2 \
             --depth 1 \
             https://github.com/qbittorrent/qBittorrent.git \
             qBittorrent
