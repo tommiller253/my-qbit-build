@@ -25,7 +25,6 @@ jobs:
     env:
       boost_path: "${{ github.workspace }}/../boost"
       libtorrent_path: "${{ github.workspace }}/../libtorrent"
-      qbt_version: "5.1.2"
 
     steps:
       - name: Checkout repository
@@ -77,6 +76,7 @@ jobs:
         with:
           version: ${{ matrix.qt_version }}
           archives: qtbase qtdeclarative qtsvg qttools
+          # Not sure why Qt made a hard dependency on qtdeclarative, try removing it when Qt > 6.4.0
           cache: true
 
       - name: Install libtorrent
@@ -100,13 +100,16 @@ jobs:
           cmake --build build
           sudo cmake --install build
 
-      - name: Build qBittorrent
+      - name: Clone qBittorrent 5.1.2
         run: |
           git clone \
-            --branch v${{ env.qbt_version }} \
+            --branch release-5.1.2 \
             --depth 1 \
             https://github.com/qbittorrent/qBittorrent.git \
             qBittorrent
+
+      - name: Build qBittorrent
+        run: |
           cd qBittorrent
           mkdir -p build
           cd build
@@ -126,11 +129,13 @@ jobs:
 
       - name: Prepare build artifacts
         run: |
+          # create .dmg
+          cd qBittorrent/build
           appName="qbittorrent"
           if [ "${{ matrix.qbt_gui }}" = "GUI=OFF" ]; then
             appName="qbittorrent-nox"
           fi
-          pushd build
+          # package
           PACKAGE_RETRY=0
           while [ "$PACKAGE_RETRY" -lt "3" ]; do
             macdeployqt "$appName.app" -dmg -no-strip
@@ -141,11 +146,12 @@ jobs:
             PACKAGE_RETRY=$((PACKAGE_RETRY + 1))
             echo "Retry $PACKAGE_RETRY..."
           done
-          popd
+          cd ../..
+          # prepare upload folder
           mkdir upload
-          cp "build/$appName.dmg" upload
+          cp "qBittorrent/build/$appName.dmg" upload
           mkdir upload/cmake
-          cp build/compile_commands.json upload/cmake
+          cp qBittorrent/build/compile_commands.json upload/cmake
           mkdir upload/cmake/libtorrent
           cp ${{ env.libtorrent_path }}/build/compile_commands.json upload/cmake/libtorrent
 
