@@ -25,6 +25,7 @@ jobs:
     env:
       boost_path: "${{ github.workspace }}/../boost"
       libtorrent_path: "${{ github.workspace }}/../libtorrent"
+      qbt_version: "5.1.2"
 
     steps:
       - name: Checkout repository
@@ -76,7 +77,6 @@ jobs:
         with:
           version: ${{ matrix.qt_version }}
           archives: qtbase qtdeclarative qtsvg qttools
-          # Not sure why Qt made a hard dependency on qtdeclarative, try removing it when Qt > 6.4.0
           cache: true
 
       - name: Install libtorrent
@@ -100,17 +100,19 @@ jobs:
           cmake --build build
           sudo cmake --install build
 
-      - name: Install qBittorrent 5.1.2
-        run: |
-          git clone --branch v5.1.2 --depth 1 https://github.com/qbittorrent/qBittorrent.git qBittorrent
-
       - name: Build qBittorrent
         run: |
+          git clone \
+            --branch v${{ env.qbt_version }} \
+            --depth 1 \
+            https://github.com/qbittorrent/qBittorrent.git \
+            qBittorrent
           cd qBittorrent
+          mkdir -p build
+          cd build
           CXXFLAGS="$CXXFLAGS -DQT_FORCE_ASSERTS -Werror -Wno-error=deprecated-declarations" \
           LDFLAGS="$LDFLAGS -gz" \
-          cmake \
-            -B build \
+          cmake .. \
             -G "Ninja" \
             -DCMAKE_BUILD_TYPE=RelWithDebInfo \
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
@@ -118,18 +120,16 @@ jobs:
             -DTESTING=ON \
             -DVERBOSE_CONFIGURE=ON \
             -D${{ matrix.qbt_gui }}
-          cmake --build build --target qbt_update_translations
-          cmake --build build
-          cmake --build build --target check
+          cmake --build . --target qbt_update_translations
+          cmake --build .
+          cmake --build . --target check
 
       - name: Prepare build artifacts
         run: |
-          # create .dmg
           appName="qbittorrent"
           if [ "${{ matrix.qbt_gui }}" = "GUI=OFF" ]; then
             appName="qbittorrent-nox"
           fi
-          # package
           pushd build
           PACKAGE_RETRY=0
           while [ "$PACKAGE_RETRY" -lt "3" ]; do
@@ -142,7 +142,6 @@ jobs:
             echo "Retry $PACKAGE_RETRY..."
           done
           popd
-          # prepare upload folder
           mkdir upload
           cp "build/$appName.dmg" upload
           mkdir upload/cmake
