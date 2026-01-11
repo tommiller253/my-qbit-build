@@ -1,4 +1,4 @@
-name: Build qBittorrent 5.1.2 for macOS ARM
+name: Build qBittorrent 5.1.2 ARM macOS
 
 on:
   push:
@@ -16,7 +16,12 @@ jobs:
       - name: Install dependencies
         run: |
           brew update
-          brew install cmake ninja openssl@3 zlib boost
+          brew install cmake ninja zlib openssl@3
+
+      - name: Install Boost 1.86
+        run: |
+          brew unlink boost || true
+          brew install https://raw.githubusercontent.com/Homebrew/homebrew-core/2e0c6c41e5f/Formula/boost.rb
 
       - name: Install Qt 6.7.0
         uses: jurplel/install-qt-action@v4
@@ -34,7 +39,7 @@ jobs:
             -DBUILD_SHARED_LIBS=OFF \
             -DCMAKE_INSTALL_PREFIX=$PWD/install \
             -DOPENSSL_ROOT_DIR=$(brew --prefix openssl@3) \
-            -DBOOST_ROOT=$(brew --prefix boost) \
+            -DBOOST_ROOT=$(brew --prefix boost@1.86) \
             -DBoost_NO_SYSTEM_PATHS=ON
           cmake --build build
           cmake --install build
@@ -65,7 +70,9 @@ jobs:
       - name: Create GUI DMG
         run: |
           mkdir -p upload
-          hdiutil create -volname qBittorrent -srcfolder qBittorrent/build/qBittorrent.app -ov -format UDZO upload/qBittorrent-5.1.2-GUI-arm64.dmg
+          hdiutil create -volname qBittorrent \
+            -srcfolder qBittorrent/build/qBittorrent.app \
+            -ov -format UDZO upload/qBittorrent-5.1.2-GUI-arm64.dmg
 
       - name: Upload GUI DMG
         uses: actions/upload-artifact@v4
@@ -83,7 +90,12 @@ jobs:
       - name: Install dependencies
         run: |
           brew update
-          brew install cmake ninja openssl@3 zlib boost
+          brew install cmake ninja zlib openssl@3
+
+      - name: Install Boost 1.86
+        run: |
+          brew unlink boost || true
+          brew install https://raw.githubusercontent.com/Homebrew/homebrew-core/2e0c6c41e5f/Formula/boost.rb
 
       - name: Install Qt 6.7.0
         uses: jurplel/install-qt-action@v4
@@ -101,7 +113,7 @@ jobs:
             -DBUILD_SHARED_LIBS=OFF \
             -DCMAKE_INSTALL_PREFIX=$PWD/install \
             -DOPENSSL_ROOT_DIR=$(brew --prefix openssl@3) \
-            -DBOOST_ROOT=$(brew --prefix boost) \
+            -DBOOST_ROOT=$(brew --prefix boost@1.86) \
             -DBoost_NO_SYSTEM_PATHS=ON
           cmake --build build
           cmake --install build
@@ -132,7 +144,9 @@ jobs:
       - name: Create NOX DMG
         run: |
           mkdir -p upload
-          hdiutil create -volname qbittorrent-nox -srcfolder qBittorrent/build/qbittorrent-nox.app -ov -format UDZO upload/qBittorrent-5.1.2-NOX-arm64.dmg
+          hdiutil create -volname qbittorrent-nox \
+            -srcfolder qBittorrent/build/qbittorrent-nox.app \
+            -ov -format UDZO upload/qBittorrent-5.1.2-NOX-arm64.dmg
 
       - name: Upload NOX DMG
         uses: actions/upload-artifact@v4
