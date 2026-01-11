@@ -18,14 +18,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        libt_version: ["2.0.11", "1.2.20"]
+        libt_version: ["1.2.20"]
         qbt_gui: ["GUI=ON", "GUI=OFF"]
         qt_version: ["6.7.0"]
 
     env:
       boost_path: "${{ github.workspace }}/../boost"
       libtorrent_path: "${{ github.workspace }}/../libtorrent"
-      qbt_version: "5.1.2"
 
     steps:
       - name: Checkout repository
@@ -36,8 +35,8 @@ jobs:
       - name: Install dependencies
         uses: Wandalen/wretry.action@v3
         env:
-          HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: 1
-          HOMEBREW_NO_INSTALL_CLEANUP: 1
+           HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: 1
+           HOMEBREW_NO_INSTALL_CLEANUP: 1
         with:
           attempt_delay: 20000
           attempt_limit: 6
@@ -100,13 +99,16 @@ jobs:
           cmake --build build
           sudo cmake --install build
 
-      - name: Build qBittorrent
+      - name: Clone qBittorrent 5.1.2
         run: |
           git clone \
-            --branch v${{ env.qbt_version }} \
+            --branch release-5.1.2 \
             --depth 1 \
             https://github.com/qbittorrent/qBittorrent.git \
             qBittorrent
+
+      - name: Build qBittorrent
+        run: |
           cd qBittorrent
           mkdir -p build
           cd build
@@ -126,21 +128,15 @@ jobs:
 
       - name: Prepare build artifacts
         run: |
-          # Determine app name
+          cd qBittorrent/build
           appName="qbittorrent"
           if [ "${{ matrix.qbt_gui }}" = "GUI=OFF" ]; then
             appName="qbittorrent-nox"
           fi
-          # Full build path
-          BUILD_PATH="${{ github.workspace }}/qBittorrent/build"
-          if [ ! -d "$BUILD_PATH" ]; then
-            echo "Build directory not found!"
-            exit 1
-          fi
-          pushd "$BUILD_PATH"
+          # package
           PACKAGE_RETRY=0
           while [ "$PACKAGE_RETRY" -lt "3" ]; do
-            macdeployqt "$appName.app" -dmg -no-strip -qmldir ../
+            macdeployqt "$appName.app" -dmg -no-strip
             if [ -f "$appName.dmg" ]; then
               break
             fi
@@ -148,13 +144,15 @@ jobs:
             PACKAGE_RETRY=$((PACKAGE_RETRY + 1))
             echo "Retry $PACKAGE_RETRY..."
           done
-          popd
-          # Remove quarantine to allow opening
-          xattr -dr com.apple.quarantine "$BUILD_PATH/$appName.app"
+          # REMOVE QUARANTINE so app opens on macOS
+          xattr -dr com.apple.quarantine "$appName.app"
+          cd ../..
           # prepare upload folder
-          mkdir -p upload/cmake/libtorrent
-          cp "$BUILD_PATH/$appName.dmg" upload
-          cp "$BUILD_PATH/compile_commands.json" upload/cmake
+          mkdir upload
+          cp "qBittorrent/build/$appName.dmg" upload
+          mkdir upload/cmake
+          cp qBittorrent/build/compile_commands.json upload/cmake
+          mkdir upload/cmake/libtorrent
           cp ${{ env.libtorrent_path }}/build/compile_commands.json upload/cmake/libtorrent
 
       - name: Upload build artifacts
