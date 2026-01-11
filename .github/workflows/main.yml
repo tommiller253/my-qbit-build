@@ -10,17 +10,14 @@ jobs:
     name: Build GUI DMG
     runs-on: macos-latest
     steps:
-      # --- 1. Checkout qBittorrent workflow files (this repo)
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # --- 2. Install system dependencies
       - name: Install dependencies
         run: |
           brew update
-          brew install cmake ninja openssl@3 zlib
+          brew install cmake ninja openssl@3 zlib boost
 
-      # --- 3. Install Qt 6.7.0
       - name: Install Qt 6.7.0
         uses: jurplel/install-qt-action@v4
         with:
@@ -28,7 +25,6 @@ jobs:
           archives: qtbase qtdeclarative qtsvg qttools
           cache: true
 
-      # --- 4. Build libtorrent 1.2.20 (required for qBittorrent)
       - name: Build libtorrent 1.2.20
         run: |
           git clone --branch v1.2.20 --depth 1 https://github.com/arvidn/libtorrent.git libtorrent
@@ -37,16 +33,16 @@ jobs:
             -DCMAKE_BUILD_TYPE=RelWithDebInfo \
             -DBUILD_SHARED_LIBS=OFF \
             -DCMAKE_INSTALL_PREFIX=$PWD/install \
-            -DOPENSSL_ROOT_DIR=$(brew --prefix openssl@3)
+            -DOPENSSL_ROOT_DIR=$(brew --prefix openssl@3) \
+            -DBOOST_ROOT=$(brew --prefix boost) \
+            -DBoost_NO_SYSTEM_PATHS=ON
           cmake --build build
           cmake --install build
 
-      # --- 5. Clone qBittorrent 5.1.2
       - name: Clone qBittorrent 5.1.2
         run: |
           git clone --branch v5.1.2 --depth 1 https://github.com/qbittorrent/qBittorrent.git qBittorrent
 
-      # --- 6. Build qBittorrent GUI
       - name: Build GUI
         run: |
           cd qBittorrent
@@ -60,20 +56,17 @@ jobs:
             -DOPENSSL_ROOT_DIR=$(brew --prefix openssl@3)
           cmake --build . --parallel
 
-      # --- 7. Deploy Qt libraries into app bundle and sign
       - name: Package GUI app
         run: |
           cd qBittorrent/build
           macdeployqt qBittorrent.app -dmg -no-strip
           codesign --force --deep --options runtime --sign - qBittorrent.app
 
-      # --- 8. Create DMG for GUI
       - name: Create GUI DMG
         run: |
           mkdir -p upload
           hdiutil create -volname qBittorrent -srcfolder qBittorrent/build/qBittorrent.app -ov -format UDZO upload/qBittorrent-5.1.2-GUI-arm64.dmg
 
-      # --- 9. Upload GUI DMG artifact
       - name: Upload GUI DMG
         uses: actions/upload-artifact@v4
         with:
@@ -90,7 +83,7 @@ jobs:
       - name: Install dependencies
         run: |
           brew update
-          brew install cmake ninja openssl@3 zlib
+          brew install cmake ninja openssl@3 zlib boost
 
       - name: Install Qt 6.7.0
         uses: jurplel/install-qt-action@v4
@@ -107,7 +100,9 @@ jobs:
             -DCMAKE_BUILD_TYPE=RelWithDebInfo \
             -DBUILD_SHARED_LIBS=OFF \
             -DCMAKE_INSTALL_PREFIX=$PWD/install \
-            -DOPENSSL_ROOT_DIR=$(brew --prefix openssl@3)
+            -DOPENSSL_ROOT_DIR=$(brew --prefix openssl@3) \
+            -DBOOST_ROOT=$(brew --prefix boost) \
+            -DBoost_NO_SYSTEM_PATHS=ON
           cmake --build build
           cmake --install build
 
@@ -115,7 +110,7 @@ jobs:
         run: |
           git clone --branch v5.1.2 --depth 1 https://github.com/qbittorrent/qBittorrent.git qBittorrent
 
-      - name: Build qBittorrent NOX
+      - name: Build NOX
         run: |
           cd qBittorrent
           mkdir build && cd build
@@ -139,7 +134,7 @@ jobs:
           mkdir -p upload
           hdiutil create -volname qbittorrent-nox -srcfolder qBittorrent/build/qbittorrent-nox.app -ov -format UDZO upload/qBittorrent-5.1.2-NOX-arm64.dmg
 
-      - name: Upload NOX DMG artifact
+      - name: Upload NOX DMG
         uses: actions/upload-artifact@v4
         with:
           name: NOX-DMG
