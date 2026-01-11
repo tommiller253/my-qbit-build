@@ -25,6 +25,7 @@ jobs:
     env:
       boost_path: "${{ github.workspace }}/../boost"
       libtorrent_path: "${{ github.workspace }}/../libtorrent"
+      qbt_version: "5.1.2"
 
     steps:
       - name: Checkout repository
@@ -35,8 +36,8 @@ jobs:
       - name: Install dependencies
         uses: Wandalen/wretry.action@v3
         env:
-           HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: 1
-           HOMEBREW_NO_INSTALL_CLEANUP: 1
+          HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: 1
+          HOMEBREW_NO_INSTALL_CLEANUP: 1
         with:
           attempt_delay: 20000
           attempt_limit: 6
@@ -99,10 +100,10 @@ jobs:
           cmake --build build
           sudo cmake --install build
 
-      - name: Build qBittorrent 5.1.2
+      - name: Build qBittorrent
         run: |
           git clone \
-            --branch release-5.1.2 \
+            --branch v${{ env.qbt_version }} \
             --depth 1 \
             https://github.com/qbittorrent/qBittorrent.git \
             qBittorrent
@@ -125,16 +126,21 @@ jobs:
 
       - name: Prepare build artifacts
         run: |
-          # create .dmg
+          # Determine app name
           appName="qbittorrent"
           if [ "${{ matrix.qbt_gui }}" = "GUI=OFF" ]; then
             appName="qbittorrent-nox"
           fi
-          # package
-          pushd build
+          # Full build path
+          BUILD_PATH="${{ github.workspace }}/qBittorrent/build"
+          if [ ! -d "$BUILD_PATH" ]; then
+            echo "Build directory not found!"
+            exit 1
+          fi
+          pushd "$BUILD_PATH"
           PACKAGE_RETRY=0
           while [ "$PACKAGE_RETRY" -lt "3" ]; do
-            macdeployqt "$appName.app" -dmg -no-strip
+            macdeployqt "$appName.app" -dmg -no-strip -qmldir ../
             if [ -f "$appName.dmg" ]; then
               break
             fi
@@ -143,17 +149,12 @@ jobs:
             echo "Retry $PACKAGE_RETRY..."
           done
           popd
-
-          # remove quarantine so macOS will open the app
-          xattr -r -d com.apple.quarantine build/$appName.app || true
-          codesign --force --deep --sign - build/$appName.app || true
-
-          # copy .dmg and compile commands for artifact upload
-          mkdir -p upload
-          cp "build/$appName.dmg" upload
-          mkdir -p upload/cmake
-          cp build/compile_commands.json upload/cmake
+          # Remove quarantine to allow opening
+          xattr -dr com.apple.quarantine "$BUILD_PATH/$appName.app"
+          # prepare upload folder
           mkdir -p upload/cmake/libtorrent
+          cp "$BUILD_PATH/$appName.dmg" upload
+          cp "$BUILD_PATH/compile_commands.json" upload/cmake
           cp ${{ env.libtorrent_path }}/build/compile_commands.json upload/cmake/libtorrent
 
       - name: Upload build artifacts
